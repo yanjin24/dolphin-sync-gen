@@ -11,7 +11,6 @@ import org.apache.logging.log4j.Logger;
 import io.github.yanjin24.dialect.HiveDialect;
 import io.github.yanjin24.dolphinscheduler.DolphinSchedulerTool;
 
-import java.net.URI;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -36,12 +35,15 @@ import java.util.Map;
  * 流程：
  *   1. resolveProjectCode（复用 CreateProcess）
  *   2. 遍历表：读源列(名 + java.sql.Types)，经 HiveDialect.toHiveType 得到 writer 列类型
- *   3. 连 Hive 对 库.表 执行 DESCRIBE FORMATTED，解析出 HDFS path 与 fileType（parquet 不支持→跳过）
+ *   3. defaultFS 取必填配置 hiveDefaultFS；path 按默认 warehouse 规则推导
+ *      （{hiveWarehouseDir}/{库}.db/{表}，hiveWarehouseDir 留空默认 /user/hive/warehouse）；
+ *      fileType 由 hiveStorageFormat 映射（orc→orc，textfile→text）
  *   4. 渲染 job_hive.ftl，createAndScheduleWorkflow（复用 CreateProcess）
  * </pre>
  *
- * <p><b>前提</b>：目标 Hive 表须已存在（先跑 {@link CreateHiveTable}），且存储格式为 orc/textfile
- * （DataX hdfswriter 不支持 parquet）。
+ * <p><b>前提</b>：目标 Hive 表须已存在（用 {@link CreateHiveTable} 生成的 DDL 手动建好），
+ * 且存储格式为 orc/textfile（DataX hdfswriter 不支持 parquet）。
+ * 本类不再连 Hive：原先靠 DESCRIBE FORMATTED 探测的 defaultFS/path/fileType 全部改由配置提供。
  */
 public class CreateHiveProcess {
 
@@ -64,9 +66,7 @@ public class CreateHiveProcess {
 
         int currentTableNum = 0;
         try (Connection sourceConn = DriverManager.getConnection(
-                config.getInputJdbcUrl(), config.getInputUserName(), config.getInputPassword());
-             Connection hiveConn = DriverManager.getConnection(
-                     config.getOutputJdbcUrl(), config.getOutputUserName(), config.getOutputPassword())) {
+                config.getInputJdbcUrl(), config.getInputUserName(), config.getInputPassword())) {
             for (String tableName : tableArray) {
                 if (StrUtil.isBlank(tableName)) continue;
 
@@ -74,13 +74,12 @@ public class CreateHiveProcess {
                 LinkedHashMap<String, Integer> columns = getTableColumns(sourceConn, tableName);
                 if (columns.isEmpty()) continue;
 
-                // 2. 连 Hive 探测目标表的 HDFS path 与 fileType
+                // 2. 由配置推导 hdfswriter 的目标表路径等参数
                 String outputTableName = config.getPrefix() + tableName + config.getSuffix();
-                HiveTarget target = describeHiveTarget(hiveConn, hiveDatabase, outputTableName);
-                if (target == null) continue; // 表不存在 / parquet 等不支持的情况已在内部告警
 
                 // 3. 渲染 job + 创建调度工作流
-                String jobConfig = renderJobConfig(config, template, tableName, columns, fieldMapping, target);
+                String jobConfig = renderJobConfig(config, template, tableName, columns, fieldMapping,
+                        buildTablePath(config.getHiveWarehouseDir(), hiveDatabase, outputTableName));
                 String taskCode = taskCodeIterator.next();
                 CreateProcess.createAndScheduleWorkflow(config, dpTool, dpProjectCode, taskCode,
                         tableName, jobConfig, currentTableNum);
@@ -98,7 +97,7 @@ public class CreateHiveProcess {
     /** 渲染单张表的 hdfswriter job JSON。 */
     private static String renderJobConfig(SyncConfig config, Template template, String tableName,
                                           LinkedHashMap<String, Integer> columns,
-                                          Map<String, String> fieldMapping, HiveTarget target) {
+                                          Map<String, String> fieldMapping, String tablePath) {
         List<String> columnList4In = new ArrayList<>();
         JSONArray hiveColumns = new JSONArray();
         for (Map.Entry<String, Integer> entry : columns.entrySet()) {
@@ -128,12 +127,10 @@ public class CreateHiveProcess {
         param.put("querySql", querySql);
         param.put("inputJdbcUrl", config.getInputJdbcUrl());
         param.put("errorLimit", config.getErrorLimit());
-        // hdfswriter 参数：defaultFS 优先用 config（HA 场景由用户控制），留空则取自 DESCRIBE 的 Location
-        String defaultFS = StrUtil.isNotBlank(config.getHiveDefaultFS())
-                ? config.getHiveDefaultFS() : target.defaultFS;
-        param.put("defaultFS", defaultFS);
-        param.put("fileType", target.fileType);
-        param.put("path", target.path);
+        // hdfswriter 参数：defaultFS 取必填配置 hiveDefaultFS（HA 填 nameservice）
+        param.put("defaultFS", config.getHiveDefaultFS());
+        param.put("fileType", resolveFileType(config.getHiveStorageFormat()));
+        param.put("path", tablePath);
         param.put("fileName", tableName);
         param.put("writeMode", resolveWriteMode(config.getDeleteWhere()));
         param.put("fieldDelimiter", resolveFieldDelimiter(config.getHiveFieldDelimiter()));
@@ -189,104 +186,33 @@ public class CreateHiveProcess {
         return ret;
     }
 
-    // ===================== Hive：DESCRIBE 探测 path / fileType =====================
+    // ===================== Hive 参数推导 =====================
 
     /**
-     * 对 {@code 库.表} 执行 {@code DESCRIBE FORMATTED}，解析 HDFS path、defaultFS、fileType。
-     *
-     * @return 探测结果；表不存在或存储格式不被 hdfswriter 支持（parquet）时返回 {@code null}（已告警）
+     * hdfswriter 的 fileType：storageFormat 留空或 orc → {@code orc}，textfile → {@code text}。
+     * 其他格式（如 parquet）hdfswriter 不支持，直接报错。
      */
-    private static HiveTarget describeHiveTarget(Connection hiveConn, String database, String tableName) {
-        String qualified = (StrUtil.isBlank(database) ? "" : "`" + database + "`.") + "`" + tableName + "`";
-        String location = null;
-        String inputFormat = null;
-        try (Statement stmt = hiveConn.createStatement();
-             ResultSet rs = stmt.executeQuery("DESCRIBE FORMATTED " + qualified)) {
-            while (rs.next()) {
-                String key = rs.getString(1);
-                if (key == null) continue;
-                key = key.trim();
-                if (key.startsWith("Location")) {
-                    location = StrUtil.trimToEmpty(rs.getString(2));
-                } else if (key.startsWith("InputFormat")) {
-                    inputFormat = StrUtil.trimToEmpty(rs.getString(2));
-                }
-            }
-        } catch (SQLException e) {
-            log.warn("Hive 表 {} DESCRIBE 失败（可能不存在），跳过: {}", qualified, e.getMessage());
-            return null;
-        }
-
-        if (StrUtil.isBlank(location)) {
-            log.warn("Hive 表 {} 未解析到 Location，跳过", qualified);
-            return null;
-        }
-        String fileType;
-        try {
-            fileType = mapInputFormatToFileType(inputFormat);
-        } catch (IllegalStateException e) {
-            log.warn("Hive 表 {} {}，跳过", qualified, e.getMessage());
-            return null;
-        }
-        return new HiveTarget(parseDefaultFsFromLocation(location), parsePathFromLocation(location), fileType);
+    static String resolveFileType(String storageFormat) {
+        String format = StrUtil.isBlank(storageFormat) ? "orc" : storageFormat.trim().toLowerCase();
+        if (format.equals("orc")) return "orc";
+        if (format.equals("textfile")) return "text";
+        throw new RuntimeException("不支持的 Hive 存储格式: " + storageFormat
+                + "（hdfswriter 仅支持 orc/textfile）");
     }
 
-    /** 把 Hive 表的 InputFormat 类名映射为 hdfswriter 的 fileType。parquet/未知格式抛 {@link IllegalStateException}。 */
-    static String mapInputFormatToFileType(String inputFormat) {
-        if (inputFormat == null) {
-            throw new IllegalStateException("未解析到 InputFormat");
+    /**
+     * 按默认 warehouse 规则推导目标表的 HDFS 路径：{@code {hiveWarehouseDir}/{库}.db/{表名}}。
+     *
+     * <p>Hive managed 表的默认 Location 即该规则；外部表或自定义 LOCATION 的表请相应调整
+     * {@code hiveWarehouseDir} 或建表时显式指定 LOCATION。
+     */
+    static String buildTablePath(String warehouseDir, String database, String tableName) {
+        String dir = StrUtil.isBlank(warehouseDir) ? "/user/hive/warehouse"
+                : StrUtil.removeSuffix(warehouseDir.trim(), "/");
+        StringBuilder path = new StringBuilder(dir);
+        if (StrUtil.isNotBlank(database)) {
+            path.append("/").append(database).append(".db");
         }
-        String lower = inputFormat.toLowerCase();
-        if (lower.contains("orc")) {
-            return "orc";
-        } else if (lower.contains("text")) {
-            return "text";
-        } else if (lower.contains("parquet")) {
-            throw new IllegalStateException("存储格式为 parquet，DataX hdfswriter 不支持（请用 orc 或 textfile 重建表）");
-        }
-        throw new IllegalStateException("不支持的存储格式 InputFormat=" + inputFormat);
-    }
-
-    /** 从 Hive Location URI 中取 HDFS 路径部分（去掉 scheme 与 authority）。 */
-    static String parsePathFromLocation(String location) {
-        try {
-            String path = new URI(location).getPath();
-            return StrUtil.isBlank(path) ? location : path;
-        } catch (Exception e) {
-            // 退化：手工截取 authority 之后的路径
-            int schemeIdx = location.indexOf("://");
-            if (schemeIdx < 0) return location;
-            int pathIdx = location.indexOf('/', schemeIdx + 3);
-            return pathIdx < 0 ? "/" : location.substring(pathIdx);
-        }
-    }
-
-    /** 从 Hive Location URI 中取 {@code scheme://authority} 作为 defaultFS（HA 下即 nameservice）。 */
-    static String parseDefaultFsFromLocation(String location) {
-        try {
-            URI uri = new URI(location);
-            if (uri.getScheme() != null && uri.getAuthority() != null) {
-                return uri.getScheme() + "://" + uri.getAuthority();
-            }
-        } catch (Exception ignored) {
-            // 落到下面的退化逻辑
-        }
-        int schemeIdx = location.indexOf("://");
-        if (schemeIdx < 0) return "";
-        int pathIdx = location.indexOf('/', schemeIdx + 3);
-        return pathIdx < 0 ? location : location.substring(0, pathIdx);
-    }
-
-    /** DESCRIBE 探测结果。 */
-    private static class HiveTarget {
-        final String defaultFS;
-        final String path;
-        final String fileType;
-
-        HiveTarget(String defaultFS, String path, String fileType) {
-            this.defaultFS = defaultFS;
-            this.path = path;
-            this.fileType = fileType;
-        }
+        return path.append("/").append(tableName).toString();
     }
 }

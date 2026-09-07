@@ -10,13 +10,12 @@ import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
 /**
- * 根据 MySQL/PostgreSQL 源表结构，在 Hive 中创建对应表。
+ * 根据 MySQL/PostgreSQL 源表结构，生成对应的 Hive 建表 DDL 并打印到控制台。
  *
  * <p>与 {@link CreateTable} 平行的另一条建表路径，专用于"源永远是 RDBMS、目标是 Hive"的场景。
  * 为避免复杂的字段类型映射，Hive 列类型被限制为三种：{@code bigint} / {@code double} / {@code string}，
@@ -26,46 +25,33 @@ import java.util.Properties;
  * 流程：
  *   1. 连源库（input*），用 DatabaseMetaData 读表存在性、列（名/类型/注释）、表注释
  *   2. 逐列调 HiveDialect.toHiveType 拼列定义，再由 HiveDialect 拼整段 Hive DDL
- *   3. 连 Hive（output*），逐张表 stmt.execute(ddl)
+ *   3. 逐张表打印 DDL（不执行），由人工复制到 beeline/hive 客户端执行
  * </pre>
  *
- * <p>Hive 建表不涉及主键/唯一键/NOT NULL/DEFAULT/自增；同步类参数（where/specified/deleteWhere 等）忽略。
+ * <p>不连 Hive：省去 46MB 的 hive-jdbc standalone 依赖，也让建表时机由人工掌控。
+ * Hive 建表不涉及主键/唯一键/NOT NULL/DEFAULT/自增；同步类参数（where/specified/deleteWhere 等）忽略。
  */
 public class CreateHiveTable {
 
     private static final Logger log = LogManager.getLogger(CreateHiveTable.class);
 
     public static void execute(SyncConfig config) {
-        String inputJdbcUrl  = config.getInputJdbcUrl();
-        String inputUserName = config.getInputUserName();
-        String inputPassword = config.getInputPassword();
-        String storageFormat = config.getHiveStorageFormat();
-        String prefix        = config.getPrefix();
-        String suffix        = config.getSuffix();
-        String[] split       = config.tableArray();
-
         // 从 output 的 Hive JDBC URL 解析库名，用于 DDL 的 库.表 前缀；URL 未填库名则为空
         String hiveDatabase = extractHiveDatabase(config.getOutputJdbcUrl());
 
-        try (Connection hiveConn = DriverManager.getConnection(
-                config.getOutputJdbcUrl(), config.getOutputUserName(), config.getOutputPassword());
-             Statement hiveStmt = hiveConn.createStatement()) {
-            int i = 1;
-            for (String tableName : split) {
-                try {
-                    String ddl = generateHiveDDL(inputJdbcUrl, inputUserName, inputPassword,
-                            tableName, hiveDatabase, prefix, suffix, storageFormat);
-                    if (ddl == null) continue;
+        int i = 1;
+        for (String tableName : config.tableArray()) {
+            try {
+                String ddl = generateHiveDDL(config.getInputJdbcUrl(), config.getInputUserName(),
+                        config.getInputPassword(), tableName, hiveDatabase,
+                        config.getPrefix(), config.getSuffix(), config.getHiveStorageFormat());
+                if (ddl == null) continue;
 
-                    log.info("{}. {}", i++, ddl);
-                    hiveStmt.execute(ddl); // Hive JDBC 部分版本不支持 executeUpdate，统一用 execute
-                    log.info("{}建表语句已执行", prefix + tableName + suffix);
-                } catch (SQLException e) {
-                    log.error("创建 Hive 表 {} 时出错: {}", prefix + tableName + suffix, e.getMessage());
-                }
+                log.info("{}. {}\n{}\n", i++, config.getPrefix() + tableName + config.getSuffix(), ddl + ";");
+            } catch (SQLException e) {
+                log.error("生成 Hive 表 {} 的建表 DDL 出错: {}",
+                        config.getPrefix() + tableName + config.getSuffix(), e.getMessage());
             }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
         }
     }
 

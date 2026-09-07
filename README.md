@@ -20,7 +20,8 @@ config.json
     ▼
 读取源库表结构元数据 (列、类型、主键、唯一键、注释)
     │
-    ├─[建表]──────► 在目标库执行 CREATE TABLE              (CreateTable / CreateHiveTable)
+    ├─[建表]──────► 在目标库执行 CREATE TABLE              (CreateTable)
+    │               或生成 Hive 建表 DDL 打印，人工执行      (CreateHiveTable)
     │
     └─[建工作流]──► 渲染 DataX job (job.ftl / job_hive.ftl)
                         │
@@ -70,13 +71,14 @@ cd target && java -jar dolphin-sync-gen-1.0.0.jar
 | 建表（含键） | `java -jar dolphin-sync-gen-1.0.0.jar CreateTable` | 在目标库按源表结构自动建表，**含**主键、唯一键、注释、NOT NULL、默认值 |
 | 建表（不含键） | `java -jar dolphin-sync-gen-1.0.0.jar CreateTableNoKey` | 同上，但**不含**主键、唯一键 |
 | 下线项目 | `java -jar dolphin-sync-gen-1.0.0.jar <projectCode>` | 参数为纯数字时，下线该 projectCode 下所有工作流（便于后续在 DolphinScheduler 中删除） |
-| 建 Hive 表 | `java -jar dolphin-sync-gen-1.0.0.jar CreateHiveTable` | 按 MySQL/PG 源表结构在 Hive 建表。`input*` 填源库，`output*` 填 Hive（`jdbc:hive2://host:10000/库`）。列类型仅 `bigint`/`double`/`string` 三种，不含任何约束 |
-| RDBMS→Hive 同步 | `java -jar dolphin-sync-gen-1.0.0.jar CreateHiveProcess` | 创建「MySQL/PG → Hive」的 DataX(`hdfswriter`) 同步工作流。`input*` 填源库，`output*` 填 Hive |
+| 建 Hive 表 | `java -jar dolphin-sync-gen-1.0.0.jar CreateHiveTable` | 按 MySQL/PG 源表结构**生成 Hive 建表 DDL 打印到控制台（不执行）**，人工复制到 beeline/hive 执行。`input*` 填源库，`output*` 填 Hive（`jdbc:hive2://host:10000/库`，仅用于解析库名）。列类型仅 `bigint`/`double`/`string` 三种，不含任何约束 |
+| RDBMS→Hive 同步 | `java -jar dolphin-sync-gen-1.0.0.jar CreateHiveProcess` | 创建「MySQL/PG → Hive」的 DataX(`hdfswriter`) 同步工作流。`input*` 填源库，`output*` 填 Hive（仅用于解析库名）。需配置 `hiveDefaultFS`（必填）、`hiveWarehouseDir`（可选）等 Hive 参数 |
 
 **典型使用顺序**：
 1. 同库/跨 RDBMS 同步：先 `CreateTable`（或 `CreateTableNoKey`）建好目标表 → 再无参运行创建同步工作流。
-2. 同步到 Hive：先 `CreateHiveTable` 建 Hive 表 → 再 `CreateHiveProcess` 创建同步工作流。
-   - 前提：目标 Hive 表必须**已存在**且存储格式为 `orc` 或 `textfile`（DataX `hdfswriter` 不支持 `parquet`）。HA 集群需额外填 `hiveDefaultFS` 与 `hiveHadoopConfig`。
+2. 同步到 Hive：先 `CreateHiveTable` 生成建表 DDL（人工执行）→ 再 `CreateHiveProcess` 创建同步工作流。
+   - 前提：目标 Hive 表必须**已存在**且存储格式为 `orc` 或 `textfile`（DataX `hdfswriter` 不支持 `parquet`）。
+   - `hiveDefaultFS` 必填（HA 集群填 nameservice，如 `hdfs://nameservice1`，可附 `hiveHadoopConfig`）；HDFS 路径按默认 warehouse 规则推导（`/user/hive/warehouse/库.db/表`），外部表或自定义 LOCATION 可用 `hiveWarehouseDir` 调整。
 
 ## 配置项说明（config.json）
 
@@ -117,9 +119,10 @@ cd target && java -jar dolphin-sync-gen-1.0.0.jar
   "tables": "test1,ff,table1,sys_user", // 待处理表名，逗号分隔
 
   // ── Hive 专用（仅 CreateHiveTable / CreateHiveProcess）──
-  "hiveStorageFormat":  "",         // 仅 CreateHiveTable：Hive 存储格式(STORED AS)，留空默认 orc，可填 parquet/textfile
+  "hiveStorageFormat":  "",         // Hive 存储格式(STORED AS)，留空默认 orc，可填 parquet/textfile
                                     //   注意：向 Hive 同步数据仅支持 orc/textfile，parquet 无法写入
-  "hiveDefaultFS":      "",         // 仅 CreateHiveProcess：HDFS defaultFS，HA 场景填 nameservice(如 hdfs://nameservice1)；留空则自动取自 Hive 表 Location
+  "hiveDefaultFS":      "",         // 仅 CreateHiveProcess 必填：HDFS defaultFS，HA 场景填 nameservice(如 hdfs://nameservice1)
+  "hiveWarehouseDir":   "",         // 仅 CreateHiveProcess：warehouse 根目录，路径推导 {dir}/{库}.db/{表}；留空默认 /user/hive/warehouse
   "hiveFieldDelimiter": "",         // 仅 CreateHiveProcess：hdfswriter 字段分隔符，留空默认 Hive 文本默认分隔符（ORC 表忽略）
   "hiveHadoopConfig":   {}          // 仅 CreateHiveProcess：hdfswriter 的 hadoopConfig，HA 场景填 dfs.nameservices/dfs.ha.namenodes.* 等；为空则省略
 }

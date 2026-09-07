@@ -35,15 +35,6 @@
             <artifactId>mysql-connector-j</artifactId>
             <version>8.4.0</version>
         </dependency>
-        <!-- Hive JDBC：CreateHiveTable 直连 HiveServer2 执行建表 DDL。
-             4.x 起用 standalone 分类器的自包含 fat jar：Maven Central 上的普通 4.x 瘦包
-             pom 未声明 thrift 等运行时依赖（实测连接时 ClassNotFoundException） -->
-        <dependency>
-            <groupId>org.apache.hive</groupId>
-            <artifactId>hive-jdbc</artifactId>
-            <version>4.1.0</version>
-            <classifier>standalone</classifier>
-        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
