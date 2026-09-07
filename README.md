@@ -40,9 +40,7 @@ config.json
 | 角色 | 支持 |
 |---|---|
 | 源库 (input) | MySQL、PostgreSQL |
-| 目标库 (output) | MySQL、PostgreSQL，以及 Hive（仅 `CreateHiveTable` / `CreateHiveProcess` 模式） |
-
-方言采用插件式设计：新增一种关系型数据库，只需实现 `DialectHandler` 接口并在 `DialectFactory` 注册一行（详见[架构](#架构与扩展)）。
+| 目标库 (output) | MySQL、PostgreSQL、Hive |
 
 ## 快速开始
 

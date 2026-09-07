@@ -1,6 +1,5 @@
 package io.github.yanjin24.dialect;
 
-import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;

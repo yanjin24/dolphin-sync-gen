@@ -6,8 +6,6 @@ import cn.hutool.http.HttpUtil;
 import cn.hutool.http.Method;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import io.github.yanjin24.entity.DPDataSource;
 import io.github.yanjin24.entity.DPProcessDefinition;
 import io.github.yanjin24.entity.DPProject;
@@ -20,8 +18,6 @@ import java.util.List;
 import java.util.Map;
 
 public class DolphinSchedulerTool {
-    private static final Logger log = LogManager.getLogger(DolphinSchedulerTool.class);
-
     private final String dpHttpUrl;
     private final String dpToken;
     private final int timeOut = 10000;
