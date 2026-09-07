@@ -1,8 +1,8 @@
-package org.example.dolphinsyncgen;
+package io.github.yanjin24;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.example.dolphinsyncgen.dolphinscheduler.DolphinSchedulerTool;
+import io.github.yanjin24.dolphinscheduler.DolphinSchedulerTool;
 
 import java.util.Map;
 

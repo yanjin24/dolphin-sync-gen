@@ -1,4 +1,4 @@
-package org.example.dolphinsyncgen;
+package io.github.yanjin24;
 
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;

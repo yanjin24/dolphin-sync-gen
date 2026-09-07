@@ -1,4 +1,4 @@
-package org.example.dolphinsyncgen.dialect;
+package io.github.yanjin24.dialect;
 
 import java.util.HashMap;
 import java.util.Map;

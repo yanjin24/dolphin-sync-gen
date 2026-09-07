@@ -142,16 +142,6 @@ cd target && java -jar dolphin-sync-gen-1.0.0.jar
 
 - **`specified`**：用于给某些列直接赋固定值而非取自源表，形式 `值 as 列名`，多个用逗号分隔，如 `99 as id,'张三' as name`。
 
-## 架构与扩展
-
-跨库建表采用 DataX Reader/Writer 风格的**方言插件**设计，编排逻辑与数据库方言细节解耦：
-
-- `CreateTable` / `CreateProcess` 等只负责流程编排，不含任何数据库方言细节；
-- 方言差异（类型精度、默认值格式、注释写法、类型映射等）全部封装在 `DialectHandler` 的实现类中；
-- **新增一种关系型数据库**，只需：① 新建 `dialect/XxxDialect.java` 实现 `DialectHandler`；② 在 `DialectFactory` 的注册表里加一行 `REGISTRY.put("xxx", new XxxDialect())`。
-
-（Hive 因类型被刻意塌缩为 3 种且不含约束，走独立的 `HiveDialect` 静态工具，不实现该接口。）
-
 ## 注意事项
 
 - `tables` 中不存在的源表会被自动跳过（仅告警，不中断其余表）。

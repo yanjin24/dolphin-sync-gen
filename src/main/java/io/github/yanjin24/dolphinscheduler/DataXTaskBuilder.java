@@ -1,4 +1,4 @@
-package org.example.dolphinsyncgen.dolphinscheduler;
+package io.github.yanjin24.dolphinscheduler;
 
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;

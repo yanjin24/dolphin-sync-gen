@@ -1,4 +1,4 @@
-package org.example.dolphinsyncgen;
+package io.github.yanjin24;
 
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.extra.template.Template;
@@ -8,8 +8,8 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.example.dolphinsyncgen.dialect.HiveDialect;
-import org.example.dolphinsyncgen.dolphinscheduler.DolphinSchedulerTool;
+import io.github.yanjin24.dialect.HiveDialect;
+import io.github.yanjin24.dolphinscheduler.DolphinSchedulerTool;
 
 import java.net.URI;
 import java.sql.Connection;

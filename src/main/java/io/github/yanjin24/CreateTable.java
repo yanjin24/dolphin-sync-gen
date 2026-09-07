@@ -1,11 +1,11 @@
-package org.example.dolphinsyncgen;
+package io.github.yanjin24;
 
 import cn.hutool.core.util.StrUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.example.dolphinsyncgen.dialect.DialectFactory;
-import org.example.dolphinsyncgen.dialect.DialectHandler;
-import org.example.dolphinsyncgen.entity.TableMetaData;
+import io.github.yanjin24.dialect.DialectFactory;
+import io.github.yanjin24.dialect.DialectHandler;
+import io.github.yanjin24.entity.TableMetaData;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;

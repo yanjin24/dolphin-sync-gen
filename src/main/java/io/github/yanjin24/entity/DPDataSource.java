@@ -1,4 +1,4 @@
-package org.example.dolphinsyncgen.entity;
+package io.github.yanjin24.entity;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

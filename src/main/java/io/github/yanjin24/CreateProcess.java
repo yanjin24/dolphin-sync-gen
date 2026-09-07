@@ -1,4 +1,4 @@
-package org.example.dolphinsyncgen;
+package io.github.yanjin24;
 
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.extra.template.Template;
@@ -6,10 +6,10 @@ import cn.hutool.extra.template.TemplateConfig;
 import cn.hutool.extra.template.TemplateUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.example.dolphinsyncgen.dolphinscheduler.DataXTaskBuilder;
-import org.example.dolphinsyncgen.dolphinscheduler.DolphinSchedulerTool;
-import org.example.dolphinsyncgen.entity.DPProcessDefinition;
-import org.example.dolphinsyncgen.entity.DPProject;
+import io.github.yanjin24.dolphinscheduler.DataXTaskBuilder;
+import io.github.yanjin24.dolphinscheduler.DolphinSchedulerTool;
+import io.github.yanjin24.entity.DPProcessDefinition;
+import io.github.yanjin24.entity.DPProject;
 
 import java.sql.Connection;
 import java.sql.DriverManager;

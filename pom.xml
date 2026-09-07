@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.example</groupId>
+    <groupId>io.github.yanjin24</groupId>
     <artifactId>dolphin-sync-gen</artifactId>
     <version>1.0.0</version>
 
@@ -28,37 +28,21 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <version>42.7.2</version>
+            <version>42.7.4</version>
         </dependency>
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
-            <version>8.2.0</version>
+            <version>8.4.0</version>
         </dependency>
         <!-- Hive JDBC：CreateHiveTable 直连 HiveServer2 执行建表 DDL。
-             排除其自带的 log4j 1.x / slf4j-log4j12 / reload4j，避免与本项目 log4j2 冲突。 -->
+             4.x 起用 standalone 分类器的自包含 fat jar：Maven Central 上的普通 4.x 瘦包
+             pom 未声明 thrift 等运行时依赖（实测连接时 ClassNotFoundException） -->
         <dependency>
             <groupId>org.apache.hive</groupId>
             <artifactId>hive-jdbc</artifactId>
-            <version>3.1.3</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-log4j12</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>log4j</groupId>
-                    <artifactId>log4j</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>ch.qos.reload4j</groupId>
-                    <artifactId>reload4j</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-reload4j</artifactId>
-                </exclusion>
-            </exclusions>
+            <version>4.1.0</version>
+            <classifier>standalone</classifier>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -100,7 +84,7 @@
                                 <!-- 合并服务配置文件 -->
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>org.example.dolphinsyncgen.Main</mainClass>
+                                    <mainClass>io.github.yanjin24.Main</mainClass>
                                 </transformer>
                             </transformers>
                             <filters>
